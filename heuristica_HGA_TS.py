@@ -5,12 +5,13 @@ import random
 import math
 import copy
 
-# ==========================
 # 1. LECTURA DE DATOS
-# ==========================
-producers = pd.read_csv('producter_data.csv')
-consumers = pd.read_csv('consumer_data.csv')
-params = pd.read_csv('additional_data.csv')
+instance = 's'  
+base_path = f'datos/{instance}/'
+
+producers = pd.read_csv(base_path + 'producter_data.csv')
+consumers = pd.read_csv(base_path + 'consumer_data.csv')
+params = pd.read_csv(base_path + 'additional_data.csv')
 
 # Procesar coordenadas
 def parse_loc(loc_str):
