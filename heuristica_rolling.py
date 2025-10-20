@@ -90,7 +90,7 @@ def crear_individuo_inteligente(productores, consumidores_df, n_barcos, capacida
         ubicacion_actual = estado_barcos[buque_id]['ubicacion']
         
         if not productores.empty:
-            # Decide a qué productor ir desde su ubicación actual (podría ser una lógica más avanzada)
+            # Decide a qué productor ir desde su ubicación actual (podríamos usar lógica más avanzada)
             productor = productores.sample(1).iloc[0]
             ruta_buque['ruta'].append({'puerto_id': productor['id'], 'tipo': 'carga', 'cantidad': capacidad})
             carga = capacidad

@@ -43,7 +43,7 @@ def cargar_y_procesar_datos():
 
 # Parámetros del Algoritmo
 COSTO_VIAJE = 3.0
-INGRESO_ENTREGA = 1.0
+INGRESO_ENTREGA = 5.0
 PENALIZACION_DNS = 1.0
 TAMANO_POBLACION = 50
 PROBABILIDAD_MUTACION = 0.2

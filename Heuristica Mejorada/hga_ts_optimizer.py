@@ -10,7 +10,7 @@ import re
 
 def cargar_y_procesar_datos():
     """
-    Lee tus archivos, genera IDs únicos para evitar errores y devuelve los datos listos.
+    Lee los archivos, genera IDs únicos para evitar errores y devuelve los datos listos.
     """
     try:
         additional_df = pd.read_csv('Datos/additional_data.csv', header=None, skiprows=1)
