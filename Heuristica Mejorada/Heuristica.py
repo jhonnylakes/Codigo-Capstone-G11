@@ -42,7 +42,7 @@ def cargar_y_procesar_datos():
         return None, None, None, None
 
 # Parámetros del Algoritmo
-COSTO_VIAJE = 3.0
+COSTO_VIAJE = 4.0
 INGRESO_ENTREGA = 5.0
 PENALIZACION_DNS = 1.0
 TAMANO_POBLACION = 50

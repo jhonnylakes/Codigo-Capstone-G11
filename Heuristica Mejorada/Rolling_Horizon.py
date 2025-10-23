@@ -54,7 +54,7 @@ if __name__ == "__main__":
         
         plan_anual = []
         
-        for semana in range(1, 3): # Bucle completo de 52 semanas
+        for semana in range(1, 53): # Bucle completo de 52 semanas
             print("\n" + "="*50)
             print(f"--- Planificando Semana {semana} ---")
             
