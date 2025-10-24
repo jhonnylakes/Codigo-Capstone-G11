@@ -4,15 +4,12 @@ import random
 import copy
 import re
 import matplotlib.pyplot as plt
-# Ya no se importa seaborn
 
-# --- 1. CARGA DE DATOS (Sin cambios) ---
 def cargar_y_procesar_datos():
     """
     Lee tus archivos, genera IDs únicos para evitar errores y devuelve los datos listos.
     """
     try:
-        # Cargar Parámetros Adicionales
         additional_df = pd.read_csv('Datos/additional_data.csv', header=None, skiprows=1)
         params = {
             'CAPACIDAD_BARCO': int(additional_df.iloc[0, 1]),
@@ -20,26 +17,20 @@ def cargar_y_procesar_datos():
             'N_BARCOS': int(additional_df.iloc[0, 3])
         }
 
-        # Cargar tu archivo de nodos pre-clusterizado
         nodos_df = pd.read_csv('Datos/nodos_con_clusters_optimizado.csv')
 
-        # Separar en Productores y Consumidores
         producer_df = nodos_df[nodos_df['Tipo'] == 'Proveedor'].copy().reset_index(drop=True)
         consumer_df = nodos_df[nodos_df['Tipo'] == 'Consumidor'].copy().reset_index(drop=True)
 
-        # --- SOLUCIÓN AL ERROR: Generar IDs únicos garantizados ---
         producer_df['id'] = ['P' + str(i) for i in producer_df.index]
         consumer_df['id'] = ['C' + str(i) for i in consumer_df.index]
         
-        # Renombrar columnas para consistencia
         producer_df = producer_df.rename(columns={'Offer': 'oferta'})
         consumer_df = consumer_df.rename(columns={'Demand': 'demanda', 'Capacity': 'capacidad'})
         
-        # Mapear el clúster al ID del productor
         cluster_to_producer_map = producer_df.set_index('cluster')['id'].to_dict()
         consumer_df['productor_asignado'] = consumer_df['cluster'].map(cluster_to_producer_map)
         
-        # Crear DataFrame unificado para distancias
         puertos_df = pd.concat([
             producer_df[['id', 'x', 'y']],
             consumer_df[['id', 'x', 'y']]
@@ -55,11 +46,6 @@ def cargar_y_procesar_datos():
         print(f"Ocurrió un error inesperado al leer los datos: {e}")
         return None, None, None, None
 
-
-# --- 2. FUNCIONES DEL ALGORITMO HÍBRIDO (Sin cambios) ---
-# (Se mantienen todas las funciones: calcular_distancia, crear_individuo_inteligente,
-# evaluar_fitness, seleccion_por_ruleta, cruzamiento, mutacion, 
-# generar_vecino_swap, y busqueda_tabu)
 
 def calcular_distancia(p1_id, p2_id, puertos):
     try:
@@ -201,7 +187,6 @@ def busqueda_tabu(individuo_inicial, puertos, consumidores,
                 mejor_solucion, mejor_fitness_global = mejor_vecino, mejor_fitness_vecino
     return mejor_solucion
 
-# --- 3. FUNCIÓN DE EJECUCIÓN (Sin cambios) ---
 def ejecutar_optimizacion_completa(
     datos_base, 
     costo_viaje, 
@@ -275,9 +260,8 @@ def ejecutar_optimizacion_completa(
         'n_consumidores_total': len(consumer_df)
     }
 
-# ---
-# MODIFICACIÓN CLAVE 1: Nueva función de graficación (Gráficos de Líneas Múltiples)
-# ---
+
+
 def analizar_y_graficar_interaccion(results_df, param_x, param_lineas, titulo_base):
     """
     Toma el DataFrame de resultados y genera 3 gráficos de líneas
@@ -289,14 +273,11 @@ def analizar_y_graficar_interaccion(results_df, param_x, param_lineas, titulo_ba
     print(f"\n--- Resultados del Análisis: {titulo_base} ---")
     print(results_df)
     
-    # Crear 3 subplots, uno para cada métrica
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 18))
     fig.suptitle(f'Análisis de Sensibilidad: {titulo_base}', fontsize=16, y=1.02)
     
-    # Obtener los valores únicos para cada línea
     valores_lineas = results_df[param_lineas].unique()
     
-    # --- Gráfico 1: Fitness ---
     ax1.set_title('Impacto en el Fitness Total')
     ax1.set_xlabel(param_x)
     ax1.set_ylabel('Fitness (Utilidad)')
@@ -306,7 +287,6 @@ def analizar_y_graficar_interaccion(results_df, param_x, param_lineas, titulo_ba
     ax1.legend()
     ax1.grid(True)
 
-    # --- Gráfico 2: Total Entregado ---
     ax2.set_title('Impacto en la Cantidad Total Entregada')
     ax2.set_xlabel(param_x)
     ax2.set_ylabel('Unidades Entregadas')
@@ -316,7 +296,6 @@ def analizar_y_graficar_interaccion(results_df, param_x, param_lineas, titulo_ba
     ax2.legend()
     ax2.grid(True)
 
-    # --- Gráfico 3: Consumidores Atendidos ---
     ax3.set_title('Impacto en Clientes Atendidos')
     ax3.set_xlabel(param_x)
     ax3.set_ylabel('N° Consumidores Atendidos')
@@ -329,47 +308,36 @@ def analizar_y_graficar_interaccion(results_df, param_x, param_lineas, titulo_ba
     plt.tight_layout(rect=[0, 0.03, 1, 0.98])
     plt.show()
 
-# ---
-# MODIFICACIÓN CLAVE 2: Bloque principal con bucle anidado y más impresiones
-# ---
+
 if __name__ == "__main__":
     
-    # Cargar datos UNA SOLA VEZ
     datos_cargados = cargar_y_procesar_datos()
     
     if datos_cargados[0] is not None:
         
-        # --- Parámetros Base para el Análisis ---
-        # (Se mantienen fijos)
+
         INGRESO_ENTREGA_BASE = 1.0
-        
-        # ATENCIÓN: Valores reducidos para pruebas rápidas.
-        # Para un análisis real, aumenta n_generaciones y tamano_poblacion.
         PARAM_GA_TS_BASE = {
-            'tamano_poblacion': 20,       # Original: 50
+            'tamano_poblacion': 20,      
             'probabilidad_mutacion': 0.2,
-            'n_generaciones': 10,       # Original: 20
-            'ts_iteraciones': 5,        # Original: 10
+            'n_generaciones': 10,     
+            'ts_iteraciones': 5,       
             'ts_tamano_lista': 7
         }
         
-        # --- ANÁLISIS COMBINADO: Penalización DNS vs. Costo de Viaje ---
         print("\n" + "="*80)
         print("INICIANDO ANÁLISIS COMBINADO: Penalización DNS vs. Costo de Viaje")
         print(f"Parámetros GA/TS: {PARAM_GA_TS_BASE['n_generaciones']} generaciones, {PARAM_GA_TS_BASE['tamano_poblacion']} población.")
         print("="*80)
         
-        # Define los rangos de valores a probar
         penalizaciones_a_probar = [0.5, 1.0, 2.0, 5.0]
         costos_a_probar = [0.5, 1.0, 1.5, 2.0]
         
         resultados_combinados = []
         
-        # NUEVO: Contadores para el progreso
         total_ejecuciones = len(penalizaciones_a_probar) * len(costos_a_probar)
         contador = 1
         
-        # Bucle anidado para probar cada combinación
         for penalizacion in penalizaciones_a_probar:
             for costo in costos_a_probar:
                 print(f"\n--- Ejecutando {contador}/{total_ejecuciones} ---")
@@ -377,26 +345,21 @@ if __name__ == "__main__":
                 
                 resultado = ejecutar_optimizacion_completa(
                     datos_base=datos_cargados,
-                    # Parámetros variados
                     costo_viaje=costo,
                     penalizacion_dns=penalizacion,
-                    # Parámetros fijos
                     ingreso_entrega=INGRESO_ENTREGA_BASE,
                     **PARAM_GA_TS_BASE 
                 )
                 
                 print(f"  -> Resultado: Fitness = {resultado['fitness']:.2f}, Entregado = {resultado['total_entregado']}, Clientes = {resultado['consumidores_atendidos']}")
                 
-                # Guardar los parámetros usados junto con el resultado
                 resultado['penalizacion_dns'] = penalizacion
                 resultado['costo_viaje'] = costo
                 resultados_combinados.append(resultado)
                 contador += 1
             
-        # Convertir a DataFrame y graficar
         df_resultados = pd.DataFrame(resultados_combinados)
         
-        # NUEVO: Llamar a la nueva función de graficación
         analizar_y_graficar_interaccion(
             df_resultados, 
             param_x='costo_viaje', 

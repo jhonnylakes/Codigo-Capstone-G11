@@ -7,15 +7,12 @@ import random
 import time
 import gc
 
-# === Corrida única con parámetros "estables" (sin tocar heuristica.py) ===
 def run_once(n_gen, producer_df, consumer_df, puertos_df, params,
              pop_size=100, prob_mut=0.10,
              ts_iters=10, ts_tabu_len=7, refine_every=10,
              seed=1234):
-    # Semillas
     random.seed(seed); np.random.seed(seed)
 
-    # Seteo de hiperparámetros globales de la heurística
     heuristica.TAMANO_POBLACION = pop_size
     heuristica.PROBABILIDAD_MUTACION = prob_mut
     heuristica.TS_ITERACIONES = ts_iters
@@ -23,7 +20,6 @@ def run_once(n_gen, producer_df, consumer_df, puertos_df, params,
 
     consumers_list = consumer_df.to_dict('records')
 
-    # 1) Población inicial
     poblacion = [
         heuristica.crear_individuo_inteligente(
             producer_df, consumer_df, params['N_BARCOS'], params['CAPACIDAD_BARCO']
@@ -34,7 +30,6 @@ def run_once(n_gen, producer_df, consumer_df, puertos_df, params,
         heuristica.evaluar_fitness(ind, puertos_df, consumers_list)
     mejor_global = max(ind['fitness'] for ind in poblacion)
 
-    # 2) Evolución con ELITISMO (k=2) + Tabú periódico
     for gen in range(n_gen):
         padres = heuristica.seleccion_por_ruleta(poblacion)
 
@@ -43,19 +38,16 @@ def run_once(n_gen, producer_df, consumer_df, puertos_df, params,
             hijo1, hijo2 = heuristica.cruzamiento(padres[i], padres[i+1], params['N_BARCOS'])
             nueva.extend([heuristica.mutacion(hijo1), heuristica.mutacion(hijo2)])
 
-        # Elitismo: conservar top-2 de la población anterior
         elite = sorted(poblacion, key=lambda x: x['fitness'], reverse=True)[:2]
 
         for ind in nueva:
             heuristica.evaluar_fitness(ind, puertos_df, consumers_list)
 
-        # Reemplaza los 2 peores por la élite si mejora
         worst_order = sorted(range(len(nueva)), key=lambda k: nueva[k]['fitness'])
         for k in range(min(2, len(elite))):
             if elite[k]['fitness'] > nueva[worst_order[k]]['fitness']:
                 nueva[worst_order[k]] = elite[k]
 
-        # Búsqueda Tabú sobre el mejor de la generación (cada refine_every gens)
         if refine_every and ((gen + 1) % refine_every == 0 or gen == n_gen - 1):
             best_gen = max(nueva, key=lambda x: x['fitness'])
             refinado = heuristica.busqueda_tabu(best_gen, puertos_df, consumers_list)
@@ -73,19 +65,16 @@ def run_once(n_gen, producer_df, consumer_df, puertos_df, params,
 def main():
     plt.close('all')
 
-    # === GRID de tamaños de población (manteniendo los otros hiperparámetros fijos) ===
     POBLACIONES = [10, 20, 50, 80, 120, 200]
-    N_GENERACIONES_FIJO = 80      # mismo criterio estable que usamos en exp_gen_stable
+    N_GENERACIONES_FIJO = 80     
     REPETICIONES = 7
     BASE_SEED = 4242
 
-    # Hiperparámetros "estables" compartidos
     PROB_MUT = 0.10
     TS_ITERS = 10
     TS_TAM_LISTA = 7
     REFINE_EVERY = 10
 
-    # === Carga de datos (una sola vez) ===
     producer_df, consumer_df, puertos_df, params = heuristica.cargar_y_procesar_datos()
     if producer_df is None:
         print("No se pudieron cargar los datos.")
@@ -125,7 +114,6 @@ def main():
         print(f"   ➜ media={row['fitness_promedio']:,.0f} | mediana={row['fitness_mediana']:,.0f} "
               f"| IQR=({row['fitness_q25']:,.0f},{row['fitness_q75']:,.0f}) | t={row['tiempo_promedio']:.1f}s")
 
-    # === Resultados y exportación ===
     df = pd.DataFrame(resultados).sort_values("tamano_poblacion")
     print("\n📊 Resultados:\n")
     print(df.to_string(index=False))
@@ -133,7 +121,6 @@ def main():
     df.to_csv("resultados_exp_poblacion_stable.csv", index=False)
     print("\n💾 Guardado en resultados_exp_poblacion_stable.csv")
 
-    # === Gráfico 1: media ± std
     plt.figure(figsize=(8,6))
     plt.errorbar(df["tamano_poblacion"], df["fitness_promedio"],
                  yerr=df["fitness_desv"], fmt='-o', capsize=5)
@@ -144,7 +131,6 @@ def main():
     plt.tight_layout()
     plt.show()
 
-    # === Gráfico 2: mediana con banda IQR
     plt.figure(figsize=(8,6))
     x = df["tamano_poblacion"].values
     y_med = df["fitness_mediana"].values
@@ -160,7 +146,6 @@ def main():
     plt.tight_layout()
     plt.show()
 
-    # === Gráfico 3: tiempo vs fitness (promedios)
     plt.figure(figsize=(8,6))
     plt.plot(df["tiempo_promedio"], df["fitness_promedio"], 'o-')
     plt.title("Trade-off tiempo vs fitness (promedios)")

@@ -1,4 +1,3 @@
-# hga_ts_optimizer.py (Versión con Cálculo de Fitness Correcto)
 
 import pandas as pd
 import numpy as np
@@ -6,11 +5,10 @@ import random
 import copy
 import re
 
-# --- 1. CARGA DE DATOS Y PARÁMETROS ---
 
 def cargar_y_procesar_datos():
     """
-    Lee los archivos, genera IDs únicos para evitar errores y devuelve los datos listos.
+    Lee tus archivos, genera IDs únicos para evitar errores y devuelve los datos listos.
     """
     try:
         additional_df = pd.read_csv('Datos/additional_data.csv', header=None, skiprows=1)
@@ -32,28 +30,27 @@ def cargar_y_procesar_datos():
             producer_df[['id', 'x', 'y']],
             consumer_df[['id', 'x', 'y']]
         ]).set_index('id')
-        print("✓ Datos y clusters cargados correctamente. IDs únicos generados.")
+        print("✓ Datos y clusters cargados correctamente.")
         return producer_df, consumer_df, puertos_df, params
     except FileNotFoundError as e:
-        print(f"ERROR: No se encontró el archivo '{e.filename}'.")
+        print(f"ERROR: No se encontró el archivo '{e.filename}'. Asegúrate de que la carpeta 'Datos/' exista y contenga los archivos.")
         return None, None, None, None
     except Exception as e:
         print(f"Ocurrió un error inesperado al leer los datos: {e}")
         return None, None, None, None
 
-# Parámetros del Algoritmo
-COSTO_VIAJE = 3.0
-INGRESO_ENTREGA = 1.0
-PENALIZACION_DNS = 1
+# Parámetros 
+COSTO_VIAJE = 4.0
+INGRESO_ENTREGA = 5.0
+PENALIZACION_DNS = 1.0
 TAMANO_POBLACION = 50
 PROBABILIDAD_MUTACION = 0.2
 N_GENERACIONES = 20
 TS_ITERACIONES = 10
 TS_TAMANO_LISTA = 7
 
-# --- 2. FUNCIONES DEL ALGORITMO HÍBRIDO (HGA-TS) ---
+#  (HGA-TS) 
 
-# (Las funciones de crear_individuo, seleccion, cruzamiento, etc. se mantienen igual)
 def calcular_distancia(p1_id, p2_id, puertos):
     if p1_id is None or p2_id is None: return 0
     try:
@@ -72,8 +69,12 @@ def encontrar_puerto_mas_cercano(puerto_actual_id, lista_puertos, puertos_df):
             menor_distancia, mejor_puerto = dist, puerto
     return mejor_puerto, menor_distancia
 
-def crear_individuo_multicarga(productores_df, consumidores_df, n_barcos, capacidad, estado_barcos, estado_inventarios, puertos_df):
+def crear_individuo_economico(productores_df, consumidores_df, n_barcos, capacidad, puertos_df, estado_inventarios):
+    """
+    Crea un individuo que solo atiende la demanda pendiente y considera costos.
+    """
     rutas = []
+
     consumidores_pendientes = []
     for _, cons in consumidores_df.iterrows():
         demanda_pendiente = cons['demanda'] - estado_inventarios.get(cons['id'], 0)
@@ -81,48 +82,59 @@ def crear_individuo_multicarga(productores_df, consumidores_df, n_barcos, capaci
             cons_copy = cons.to_dict()
             cons_copy['demanda_pendiente'] = demanda_pendiente
             consumidores_pendientes.append(cons_copy)
-    min_demanda_global = min(c['demanda_pendiente'] for c in consumidores_pendientes) if consumidores_pendientes else 0
-    umbral_recarga = capacidad * 0.25
+
     for i in range(1, int(n_barcos) + 1):
-        buque_id = f'B{i}'
-        ruta_buque = {'buque_id': buque_id, 'ruta': []}
-        ubicacion_actual = estado_barcos[buque_id]['ubicacion']
-        carga_actual = estado_barcos[buque_id].get('carga_a_bordo', 0)
+        ruta_buque = {'buque_id': f'B{i}', 'ruta': []}
+        productor_inicial = productores_df.sample(1).iloc[0]
+        ubicacion_actual = productor_inicial['id']
+        carga_actual = 0
         max_paradas = 24
+
         while len(ruta_buque['ruta']) < max_paradas and consumidores_pendientes:
-            if carga_actual < umbral_recarga or (min_demanda_global > 0 and carga_actual < min_demanda_global):
+            min_demanda_pendiente = min(c['demanda_pendiente'] for c in consumidores_pendientes) if consumidores_pendientes else 0
+            
+            if carga_actual < (capacidad * 0.25) or (min_demanda_pendiente > 0 and carga_actual < min_demanda_pendiente):
                 productor_cercano, _ = encontrar_puerto_mas_cercano(ubicacion_actual, productores_df.to_dict('records'), puertos_df)
                 if productor_cercano is None: break
+                
                 cantidad_a_cargar = capacidad - carga_actual
                 ruta_buque['ruta'].append({'puerto_id': productor_cercano['id'], 'tipo': 'carga', 'cantidad': cantidad_a_cargar})
                 carga_actual += cantidad_a_cargar
                 ubicacion_actual = productor_cercano['id']
+
             if not consumidores_pendientes: break
+
             consumidor_cercano, dist_a_consumidor = encontrar_puerto_mas_cercano(ubicacion_actual, consumidores_pendientes, puertos_df)
             if consumidor_cercano is None: break
+            
             demanda_a_entregar = consumidor_cercano['demanda_pendiente']
+
             if carga_actual >= demanda_a_entregar:
+                costo_del_tramo = dist_a_consumidor * COSTO_VIAJE
+                ingreso_del_tramo = demanda_a_entregar * INGRESO_ENTREGA
+                
+                if costo_del_tramo > ingreso_del_tramo and len(ruta_buque['ruta']) > 1:
+                    break 
+
                 ruta_buque['ruta'].append({'puerto_id': consumidor_cercano['id'], 'tipo': 'descarga', 'cantidad': demanda_a_entregar})
                 carga_actual -= demanda_a_entregar
                 ubicacion_actual = consumidor_cercano['id']
                 consumidores_pendientes.remove(consumidor_cercano)
             else:
                 carga_actual = 0 
+        
         rutas.append(ruta_buque)
+        
     return {'fitness': 0, 'rutas': rutas}
 
-# --- FUNCIÓN DE FITNESS CORREGIDA ---
-def evaluar_fitness(individuo, puertos, consumidores, estado_barcos, estado_inventarios_inicial, params):
+def evaluar_fitness(individuo, puertos, consumidores, estado_inventarios_inicial, params):
     costo_viaje_total = 0
-    
     entregas = {c['id']: 0 for c in consumidores}
     
     for i, plan in enumerate(individuo['rutas']):
         ruta = plan['ruta']
-        buque_id = f'B{i+1}'
         
-        # Validar ruta
-        carga_actual = estado_barcos[buque_id].get('carga_a_bordo', 0)
+        carga_actual = 0 
         for parada in ruta:
             if parada['tipo'] == 'carga':
                 carga_actual += parada['cantidad']
@@ -133,19 +145,14 @@ def evaluar_fitness(individuo, puertos, consumidores, estado_barcos, estado_inve
                     individuo['fitness'] = -float('inf'); return -float('inf')
                 carga_actual -= parada['cantidad']
 
-        # Calcular costo de viaje
-        if not ruta: continue
-        ubicacion_inicial = estado_barcos[buque_id]['ubicacion']
-        costo_viaje_total += calcular_distancia(ubicacion_inicial, ruta[0]['puerto_id'], puertos)
+        if len(ruta) < 2: continue
         for j in range(len(ruta) - 1):
             costo_viaje_total += calcular_distancia(ruta[j]['puerto_id'], ruta[j+1]['puerto_id'], puertos)
         
-        # Acumular entregas
         for parada in ruta:
             if parada['tipo'] == 'descarga':
                 entregas[parada['puerto_id']] += parada['cantidad']
 
-    # --- LÓGICA DE CÁLCULO CORREGIDA ---
     ingreso_total = 0
     dns_total = 0
     inventario_final = copy.deepcopy(estado_inventarios_inicial)
@@ -156,17 +163,11 @@ def evaluar_fitness(individuo, puertos, consumidores, estado_barcos, estado_inve
         inv_inicial = estado_inventarios_inicial.get(cons_id, 0)
         entregado = entregas.get(cons_id, 0)
 
-        # La demanda que realmente necesita el cliente esta semana
         demanda_pendiente = max(0, demanda_semanal - inv_inicial)
-
-        # El ingreso se basa solo en la demanda pendiente que fue satisfecha
         unidades_utiles_entregadas = min(entregado, demanda_pendiente)
         ingreso_total += unidades_utiles_entregadas * INGRESO_ENTREGA
-
-        # La DNS se calcula sobre la demanda pendiente no cubierta
         dns_total += max(0, demanda_pendiente - entregado)
 
-        # El inventario final considera todo lo entregado
         inv_final_antes_consumo = inv_inicial + entregado
         inventario_final[cons_id] = max(0, inv_final_antes_consumo - demanda_semanal)
 
@@ -176,7 +177,6 @@ def evaluar_fitness(individuo, puertos, consumidores, estado_barcos, estado_inve
     individuo['fitness'] = ingreso_total - costo_total
     return individuo['fitness']
 
-# (El resto de las funciones del HGA-TS se mantienen igual)
 def seleccion_por_ruleta(poblacion):
     poblacion_valida = [ind for ind in poblacion if ind.get('fitness', -float('inf')) > -float('inf')]
     if not poblacion_valida: return [copy.deepcopy(random.choice(poblacion)) for _ in range(len(poblacion))]
@@ -216,19 +216,20 @@ def mutacion(individuo):
 
 def generar_vecino_swap(solucion):
     vecino = copy.deepcopy(solucion)
-    rutas_elegibles = [i for i, r in enumerate(vecino['rutas']) if len([p for p in r['ruta'] if p['tipo']=='descarga']) > 1]
+    rutas_elegibles = [i for i, r in enumerate(vecino['rutas']) if len(r['ruta']) > 1]
     if not rutas_elegibles: return None, None
     idx_ruta = random.choice(rutas_elegibles)
-    paradas_descarga_indices = [i for i, p in enumerate(vecino['rutas'][idx_ruta]['ruta']) if p['tipo']=='descarga']
-    if len(paradas_descarga_indices) < 2: return None, None
-    idx1, idx2 = random.sample(paradas_descarga_indices, 2)
-    movimiento = ('swap', idx_ruta, vecino['rutas'][idx_ruta]['ruta'][idx1]['puerto_id'], vecino['rutas'][idx_ruta]['ruta'][idx2]['puerto_id'])
-    vecino['rutas'][idx_ruta]['ruta'][idx1], vecino['rutas'][idx_ruta]['ruta'][idx2] = vecino['rutas'][idx_ruta]['ruta'][idx2], vecino['rutas'][idx_ruta]['ruta'][idx1]
+    paradas = vecino['rutas'][idx_ruta]['ruta']
+    if len(paradas) < 2: return None, None
+    idx1, idx2 = random.sample(range(len(paradas)), 2)
+    if paradas[idx1]['tipo'] != paradas[idx2]['tipo']: return None, None
+    movimiento = ('swap', idx_ruta, paradas[idx1]['puerto_id'], paradas[idx2]['puerto_id'])
+    paradas[idx1], paradas[idx2] = paradas[idx2], paradas[idx1]
     return vecino, movimiento
 
-def busqueda_tabu(individuo_inicial, puertos, consumidores, estado_barcos, estado_inventarios, params):
+def busqueda_tabu(individuo_inicial, puertos, consumidores, estado_inventarios, params):
     mejor_solucion = copy.deepcopy(individuo_inicial)
-    mejor_fitness_global = evaluar_fitness(mejor_solucion, puertos, consumidores, estado_barcos, estado_inventarios, params)
+    mejor_fitness_global = evaluar_fitness(mejor_solucion, puertos, consumidores, estado_inventarios, params)
     if mejor_fitness_global == -float('inf'): return individuo_inicial
     solucion_actual = copy.deepcopy(mejor_solucion)
     lista_tabu = []
@@ -237,7 +238,7 @@ def busqueda_tabu(individuo_inicial, puertos, consumidores, estado_barcos, estad
         for _ in range(20):
             vecino, movimiento = generar_vecino_swap(solucion_actual)
             if not vecino or not movimiento: continue
-            fitness_vecino = evaluar_fitness(vecino, puertos, consumidores, estado_barcos, estado_inventarios, params)
+            fitness_vecino = evaluar_fitness(vecino, puertos, consumidores, estado_inventarios, params)
             if fitness_vecino == -float('inf'): continue
             es_mejor_global = fitness_vecino > mejor_fitness_global
             if (movimiento not in lista_tabu) or es_mejor_global:
@@ -251,64 +252,103 @@ def busqueda_tabu(individuo_inicial, puertos, consumidores, estado_barcos, estad
                 mejor_solucion, mejor_fitness_global = mejor_vecino, mejor_fitness_vecino
     return mejor_solucion
 
-# --- FUNCIÓN PRINCIPAL DEL MÓDULO ---
-def ejecutar_optimizacion_semanal(producer_df, consumer_df, puertos_df, params, estado_barcos, estado_inventarios):
-    consumers_list = consumer_df.to_dict('records')
+if __name__ == "__main__":
     
-    poblacion = [crear_individuo_multicarga(producer_df, consumer_df, params['N_BARCOS'], params['CAPACIDAD_BARCO'], estado_barcos, estado_inventarios, puertos_df) for _ in range(TAMANO_POBLACION)]
-    
-    for ind in poblacion:
-        evaluar_fitness(ind, puertos_df, consumers_list, estado_barcos, estado_inventarios, params)
+    producer_df, consumer_df, puertos_df, params = cargar_y_procesar_datos()
 
-    mejor_fitness_global = -float('inf')
-    mejor_individuo_global = None
+    if producer_df is not None:
+        consumers_list = consumer_df.to_dict('records')
+        
+        estado_barcos_inicial_dummy = {f'B{i+1}': {'ubicacion': None, 'carga_a_bordo': 0} for i in range(int(params['N_BARCOS']))}
+        estado_inventarios_inicial = {row['id']: 0 for _, row in consumer_df.iterrows()}
 
-    for gen in range(N_GENERACIONES):
-        padres = seleccion_por_ruleta(poblacion)
+        print("\n--- INICIANDO ALGORITMO HÍBRIDO (MODO STANDALONE) ---")
+        print(f"Parámetros: {params['N_BARCOS']} barcos de {params['CAPACIDAD_BARCO']} de capacidad.")
+        print(f"Población: {TAMANO_POBLACION}, Generaciones: {N_GENERACIONES}\n")
+
+        poblacion = [crear_individuo_economico(producer_df, consumer_df, params['N_BARCOS'], params['CAPACIDAD_BARCO'], puertos_df, estado_inventarios_inicial) for _ in range(TAMANO_POBLACION)]
         
-        nueva_poblacion = []
-        if len(padres) > 1:
-            for i in range(0, TAMANO_POBLACION, 2):
-                hijo1, hijo2 = cruzamiento(padres[i], padres[i+1], params['N_BARCOS'])
-                nueva_poblacion.extend([mutacion(hijo1), mutacion(hijo2)])
-        else:
-            nueva_poblacion = [copy.deepcopy(p) for p in padres]
-        
-        for ind in nueva_poblacion:
-            evaluar_fitness(ind, puertos_df, consumers_list, estado_barcos, estado_inventarios, params)
+        for ind in poblacion:
+            evaluar_fitness(ind, puertos_df, consumers_list, estado_inventarios_inicial, params)
+
+        mejor_fitness_global = -float('inf')
+
+        for gen in range(N_GENERACIONES):
+            padres = seleccion_por_ruleta(poblacion)
             
-        mejor_de_generacion = max(poblacion, key=lambda x: x.get('fitness', -float('inf')))
-        
-        mejor_refinado = busqueda_tabu(mejor_de_generacion, puertos_df, consumers_list, estado_barcos, estado_inventarios, params)
-        
-        if nueva_poblacion:
-            peor_nuevo_idx = min(range(len(nueva_poblacion)), key=lambda i: nueva_poblacion[i].get('fitness', -float('inf')))
-            if mejor_refinado.get('fitness', -float('inf')) > nueva_poblacion[peor_nuevo_idx].get('fitness', -float('inf')):
-                nueva_poblacion[peor_nuevo_idx] = mejor_refinado
-        
-        poblacion = nueva_poblacion if nueva_poblacion else poblacion
-        
-        mejor_fitness_actual = max(ind.get('fitness', -float('inf')) for ind in poblacion)
-        if mejor_fitness_actual > mejor_fitness_global:
-            mejor_fitness_global = mejor_fitness_actual
-            mejor_individuo_global = max(poblacion, key=lambda x: x.get('fitness', -float('inf')))
-
-    #imprime la ruta de los buques
-    for buque in mejor_individuo_global['rutas']:
-        ruta_str = " -> ".join([f"{parada['puerto_id']}({parada['tipo'][0].upper()}:{parada['cantidad']})" for parada in buque['ruta']])
-        print("\nRuta del Buque:")
-        print(f"Ruta {buque['buque_id']}: {ruta_str}")
-
-    # imprime las unidades entregadas en total y la cantidad de consumidores atendidos
-    entregas_totales = {}
-    for buque in mejor_individuo_global['rutas']:
-        for parada in buque['ruta']:
-            if parada['tipo'] == 'descarga':
-                entregas_totales[parada['puerto_id']] = entregas_totales.get(parada['puerto_id'], 0) + parada['cantidad']
-    total_unidades_entregadas = sum(entregas_totales.values())
-    total_consumidores_atendidos = len(entregas_totales)
-    print(f"\nTotal de Unidades Entregadas: {total_unidades_entregadas}")
-    print(f"Total de Consumidores Atendidos: {total_consumidores_atendidos}")
-
+            nueva_poblacion = []
+            if len(padres) > 1:
+                for i in range(0, TAMANO_POBLACION, 2):
+                    hijo1, hijo2 = cruzamiento(padres[i], padres[i+1], params['N_BARCOS'])
+                    nueva_poblacion.extend([mutacion(hijo1), mutacion(hijo2)])
+            else:
+                nueva_poblacion = [copy.deepcopy(p) for p in padres]
             
-    return mejor_individuo_global
+            for ind in nueva_poblacion:
+                evaluar_fitness(ind, puertos_df, consumers_list, estado_inventarios_inicial, params)
+                
+            mejor_de_generacion = max(poblacion, key=lambda x: x.get('fitness', -float('inf')))
+            
+            mejor_refinado = busqueda_tabu(mejor_de_generacion, puertos_df, consumers_list, estado_inventarios_inicial, params)
+            
+            if nueva_poblacion:
+                peor_nuevo_idx = min(range(len(nueva_poblacion)), key=lambda i: nueva_poblacion[i].get('fitness', -float('inf')))
+                if mejor_refinado.get('fitness', -float('inf')) > nueva_poblacion[peor_nuevo_idx].get('fitness', -float('inf')):
+                    nueva_poblacion[peor_nuevo_idx] = mejor_refinado
+            
+            poblacion = nueva_poblacion if nueva_poblacion else poblacion
+            
+            mejor_fitness_actual = max(ind.get('fitness', -float('inf')) for ind in poblacion)
+            if mejor_fitness_actual > mejor_fitness_global:
+                mejor_fitness_global = mejor_fitness_actual
+
+            fitness_promedio = np.mean([ind['fitness'] for ind in poblacion if ind.get('fitness', -float('inf')) > -float('inf')])
+            
+            print(f"Generación {gen+1:2d}: Mejor Fitness = {mejor_fitness_actual:10.2f} (Mejor Global: {mejor_fitness_global:10.2f})")
+
+        print("\n--- EVOLUCIÓN COMPLETADA ---")
+        mejor_individuo_final = max(poblacion, key=lambda x: x.get('fitness', -float('inf')))
+        print(f"Mejor fitness global encontrado: {mejor_individuo_final['fitness']:.2f}")
+
+        print("\n" + "="*50)
+        print("--- ANÁLISIS DEL MEJOR PLAN SEMANAL ENCONTRADO ---")
+        print("="*50)
+
+        total_entregado = 0
+        consumidores_atendidos = set()
+        distancia_total = 0
+
+        for plan_buque in mejor_individuo_final['rutas']:
+            ruta = plan_buque['ruta']
+            if not ruta: continue
+            
+            for i in range(len(ruta) - 1):
+                distancia_total += calcular_distancia(ruta[i]['puerto_id'], ruta[i+1]['puerto_id'], puertos_df)
+            
+            for parada in ruta:
+                if parada['tipo'] == 'descarga':
+                    total_entregado += parada['cantidad']
+                    consumidores_atendidos.add(parada['puerto_id'])
+        
+        print(f"  - Fitness (Utilidad): {mejor_individuo_final['fitness']:.2f}")
+        print(f"  - Unidades Totales Entregadas: {int(total_entregado)}")
+        print(f"  - Consumidores Únicos Atendidos: {len(consumidores_atendidos)} de {len(consumer_df)}")
+        print(f"  - Distancia Total Recorrida: {distancia_total:.2f}")
+        # imprimir ruta de los buques y cantidad de paradas
+        for plan_buque in mejor_individuo_final['rutas']:
+            ruta = plan_buque['ruta']
+            buque_id = plan_buque['buque_id']
+            if len(ruta) <= 1:
+                print(f"\n- Buque {buque_id}: RUTA VACÍA O SOLO CARGA (no realiza entregas)")
+                continue
+            ruta_str = f"Ruta {buque_id}: "
+            for parada in ruta:
+                if parada['tipo'] == 'carga':
+                    ruta_str += f"{parada['puerto_id']}(C:{parada['cantidad']}) -> "
+                else:
+                    ruta_str += f"{parada['puerto_id']}(D:{parada['cantidad']}) -> "
+            ruta_str = ruta_str.rstrip(" -> ")
+            print(f"\n- {ruta_str}")
+
+        
+        print("="*50)
