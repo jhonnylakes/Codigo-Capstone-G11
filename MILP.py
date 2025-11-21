@@ -4,14 +4,13 @@ import pyomo.environ as pyo
 from itertools import product
 
 
-instance = 's'  
+instance = 'l'  
 base_path = f'datos/{instance}/'
 
 prod_df = pd.read_csv(base_path + 'producter_data.csv')
 cons_df = pd.read_csv(base_path + 'consumer_data.csv')
 ship_df = pd.read_csv(base_path + 'additional_data.csv')
 
-# --- Limpieza / formateo coordenadas ---
 prod_df["x"] = prod_df["Location"].apply(lambda s: float(s.strip("()").split(",")[0]))
 prod_df["y"] = prod_df["Location"].apply(lambda s: float(s.strip("()").split(",")[1]))
 cons_df["x"] = cons_df["Location"].apply(lambda s: float(s.strip("()").split(",")[0]))
