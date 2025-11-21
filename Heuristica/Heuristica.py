@@ -40,14 +40,15 @@ def cargar_y_procesar_datos():
         return None, None, None, None
 
 # Parámetros 
-COSTO_VIAJE = 4.0
-INGRESO_ENTREGA = 5.0
+COSTO_VIAJE = 1.0
+#INGRESO_ENTREGA = 5.0
 PENALIZACION_DNS = 1.0
 TAMANO_POBLACION = 50
 PROBABILIDAD_MUTACION = 0.2
 N_GENERACIONES = 20
 TS_ITERACIONES = 10
 TS_TAMANO_LISTA = 7
+MAX_PARADAS = 24
 
 #  (HGA-TS) 
 
@@ -69,12 +70,16 @@ def encontrar_puerto_mas_cercano(puerto_actual_id, lista_puertos, puertos_df):
             menor_distancia, mejor_puerto = dist, puerto
     return mejor_puerto, menor_distancia
 
+"individuo = solución de rutas para todos los barcos"
 def crear_individuo_economico(productores_df, consumidores_df, n_barcos, capacidad, puertos_df, estado_inventarios):
+    nonlocal MAX_PARADAS
     """
     Crea un individuo que solo atiende la demanda pendiente y considera costos.
     """
     rutas = []
+    costo_total = 0
 
+    # agregamos a lista los consumidores que aún tienen demanda sin satisfacer.
     consumidores_pendientes = []
     for _, cons in consumidores_df.iterrows():
         demanda_pendiente = cons['demanda'] - estado_inventarios.get(cons['id'], 0)
@@ -83,27 +88,27 @@ def crear_individuo_economico(productores_df, consumidores_df, n_barcos, capacid
             cons_copy['demanda_pendiente'] = demanda_pendiente
             consumidores_pendientes.append(cons_copy)
 
+    #asignamos al azar un productor a cada uno de los barcos -> PENDIENTE: LIMITAR A CLUSTER
     for i in range(1, int(n_barcos) + 1):
         ruta_buque = {'buque_id': f'B{i}', 'ruta': []}
         productor_inicial = productores_df.sample(1).iloc[0]
         ubicacion_actual = productor_inicial['id']
         carga_actual = 0
-        max_paradas = 24
 
-        while len(ruta_buque['ruta']) < max_paradas and consumidores_pendientes:
-            min_demanda_pendiente = min(c['demanda_pendiente'] for c in consumidores_pendientes) if consumidores_pendientes else 0
+        while len(ruta_buque['ruta']) < MAX_PARADAS and consumidores_pendientes:
+            min_demanda_pendiente = min(c['demanda_pendiente'] for c in consumidores_pendientes) 
             
-            if carga_actual < (capacidad * 0.25) or (min_demanda_pendiente > 0 and carga_actual < min_demanda_pendiente):
+            # tenemos que cargar el buque?
+            if min_demanda_pendiente > 0 and carga_actual < min_demanda_pendiente:
                 productor_cercano, _ = encontrar_puerto_mas_cercano(ubicacion_actual, productores_df.to_dict('records'), puertos_df)
                 if productor_cercano is None: break
                 
                 cantidad_a_cargar = capacidad - carga_actual
                 ruta_buque['ruta'].append({'puerto_id': productor_cercano['id'], 'tipo': 'carga', 'cantidad': cantidad_a_cargar})
-                carga_actual += cantidad_a_cargar
+                carga_actual += cantidad_a_cargar 
                 ubicacion_actual = productor_cercano['id']
 
-            if not consumidores_pendientes: break
-
+            # repartimos
             consumidor_cercano, dist_a_consumidor = encontrar_puerto_mas_cercano(ubicacion_actual, consumidores_pendientes, puertos_df)
             if consumidor_cercano is None: break
             
@@ -111,21 +116,17 @@ def crear_individuo_economico(productores_df, consumidores_df, n_barcos, capacid
 
             if carga_actual >= demanda_a_entregar:
                 costo_del_tramo = dist_a_consumidor * COSTO_VIAJE
-                ingreso_del_tramo = demanda_a_entregar * INGRESO_ENTREGA
-                
-                if costo_del_tramo > ingreso_del_tramo and len(ruta_buque['ruta']) > 1:
-                    break 
+                costo_total += costo_del_tramo
+                #ingreso_del_tramo = demanda_a_entregar * INGRESO_ENTREGA
 
                 ruta_buque['ruta'].append({'puerto_id': consumidor_cercano['id'], 'tipo': 'descarga', 'cantidad': demanda_a_entregar})
                 carga_actual -= demanda_a_entregar
                 ubicacion_actual = consumidor_cercano['id']
                 consumidores_pendientes.remove(consumidor_cercano)
-            else:
-                carga_actual = 0 
         
         rutas.append(ruta_buque)
         
-    return {'fitness': 0, 'rutas': rutas}
+    return {'costo_total': costo_total, 'rutas': rutas}
 
 def evaluar_fitness(individuo, puertos, consumidores, estado_inventarios_inicial, params):
     costo_viaje_total = 0
@@ -165,7 +166,7 @@ def evaluar_fitness(individuo, puertos, consumidores, estado_inventarios_inicial
 
         demanda_pendiente = max(0, demanda_semanal - inv_inicial)
         unidades_utiles_entregadas = min(entregado, demanda_pendiente)
-        ingreso_total += unidades_utiles_entregadas * INGRESO_ENTREGA
+        #ingreso_total += unidades_utiles_entregadas * INGRESO_ENTREGA
         dns_total += max(0, demanda_pendiente - entregado)
 
         inv_final_antes_consumo = inv_inicial + entregado
@@ -266,8 +267,10 @@ if __name__ == "__main__":
         print(f"Parámetros: {params['N_BARCOS']} barcos de {params['CAPACIDAD_BARCO']} de capacidad.")
         print(f"Población: {TAMANO_POBLACION}, Generaciones: {N_GENERACIONES}\n")
 
+        #creamos los individuos económicos ()
         poblacion = [crear_individuo_economico(producer_df, consumer_df, params['N_BARCOS'], params['CAPACIDAD_BARCO'], puertos_df, estado_inventarios_inicial) for _ in range(TAMANO_POBLACION)]
         
+        # acá se evalúa el fitness
         for ind in poblacion:
             evaluar_fitness(ind, puertos_df, consumers_list, estado_inventarios_inicial, params)
 
