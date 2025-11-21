@@ -1,6 +1,6 @@
 
 import pandas as pd
-import hga_ts_optimizer as opt  
+import Heuristica as opt  
 
 def inicializar_estado_sistema(productores, consumidores, n_barcos):
     """Define el estado del sistema para la Semana 1."""

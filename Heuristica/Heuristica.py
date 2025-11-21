@@ -72,7 +72,6 @@ def encontrar_puerto_mas_cercano(puerto_actual_id, lista_puertos, puertos_df):
 
 "individuo = solución de rutas para todos los barcos"
 def crear_individuo_economico(productores_df, consumidores_df, n_barcos, capacidad, puertos_df, estado_inventarios):
-    nonlocal MAX_PARADAS
     """
     Crea un individuo que solo atiende la demanda pendiente y considera costos.
     """
@@ -141,10 +140,10 @@ def evaluar_costos(individuo, puertos, consumidores, estado_inventarios_inicial,
             if parada['tipo'] == 'carga':
                 carga_actual += parada['cantidad']
                 if carga_actual > params['CAPACIDAD_BARCO']:
-                    individuo['costo_viaje_total'] = -float('inf'); return -float('inf')
+                    individuo['costo_viaje_total'] = float('inf'); return individuo
             elif parada['tipo'] == 'descarga':
                 if carga_actual < parada['cantidad']:
-                    individuo['costo_viaje_total'] = -float('inf'); return -float('inf')
+                    individuo['costo_viaje_total'] = float('inf'); return individuo
                 carga_actual -= parada['cantidad']
         
         #seguimos si ruta es factible
@@ -294,6 +293,8 @@ def busqueda_tabu(individuo_inicial, puertos, consumidores, estado_inventarios, 
 
 
 if __name__ == "__main__":
+
+    print("Hola, soy Juan. Acá empieza el código de la Heurística")
     
     producer_df, consumer_df, puertos_df, params = cargar_y_procesar_datos()
 
