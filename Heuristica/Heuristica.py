@@ -77,7 +77,7 @@ def crear_individuo_economico(productores_df, consumidores_df, n_barcos, capacid
     Crea un individuo que solo atiende la demanda pendiente y considera costos.
     """
     rutas = []
-    costo_total = 0
+    costo_viaje_total = 0
 
     # agregamos a lista los consumidores que aún tienen demanda sin satisfacer.
     consumidores_pendientes = []
@@ -116,7 +116,7 @@ def crear_individuo_economico(productores_df, consumidores_df, n_barcos, capacid
 
             if carga_actual >= demanda_a_entregar:
                 costo_del_tramo = dist_a_consumidor * COSTO_VIAJE
-                costo_total += costo_del_tramo
+                costo_viaje_total += costo_del_tramo
                 #ingreso_del_tramo = demanda_a_entregar * INGRESO_ENTREGA
 
                 ruta_buque['ruta'].append({'puerto_id': consumidor_cercano['id'], 'tipo': 'descarga', 'cantidad': demanda_a_entregar})
@@ -126,35 +126,38 @@ def crear_individuo_economico(productores_df, consumidores_df, n_barcos, capacid
         
         rutas.append(ruta_buque)
         
-    return {'costo_total': costo_total, 'rutas': rutas}
+    return {'costo_viaje_total': 0, 'costo_total': 0 , 'rutas': rutas}
 
-def evaluar_fitness(individuo, puertos, consumidores, estado_inventarios_inicial, params):
+def evaluar_costos(individuo, puertos, consumidores, estado_inventarios_inicial, params):
     costo_viaje_total = 0
     entregas = {c['id']: 0 for c in consumidores}
     
     for i, plan in enumerate(individuo['rutas']):
-        ruta = plan['ruta']
+        ruta = plan['ruta'] #esta es la ruta del buque i
         
+        # chequeamos factibilidad de la ruta
         carga_actual = 0 
         for parada in ruta:
             if parada['tipo'] == 'carga':
                 carga_actual += parada['cantidad']
-                if carga_actual > params['CAPACIDAD_BARCO'] + 1:
-                    individuo['fitness'] = -float('inf'); return -float('inf')
+                if carga_actual > params['CAPACIDAD_BARCO']:
+                    individuo['costo_viaje_total'] = -float('inf'); return -float('inf')
             elif parada['tipo'] == 'descarga':
                 if carga_actual < parada['cantidad']:
-                    individuo['fitness'] = -float('inf'); return -float('inf')
+                    individuo['costo_viaje_total'] = -float('inf'); return -float('inf')
                 carga_actual -= parada['cantidad']
-
+        
+        #seguimos si ruta es factible
         if len(ruta) < 2: continue
+
         for j in range(len(ruta) - 1):
             costo_viaje_total += calcular_distancia(ruta[j]['puerto_id'], ruta[j+1]['puerto_id'], puertos)
         
+        # anotamos cantidad descargada a cada consumidor en dict entregas.
         for parada in ruta:
             if parada['tipo'] == 'descarga':
                 entregas[parada['puerto_id']] += parada['cantidad']
 
-    ingreso_total = 0
     dns_total = 0
     inventario_final = copy.deepcopy(estado_inventarios_inicial)
 
@@ -166,7 +169,6 @@ def evaluar_fitness(individuo, puertos, consumidores, estado_inventarios_inicial
 
         demanda_pendiente = max(0, demanda_semanal - inv_inicial)
         unidades_utiles_entregadas = min(entregado, demanda_pendiente)
-        #ingreso_total += unidades_utiles_entregadas * INGRESO_ENTREGA
         dns_total += max(0, demanda_pendiente - entregado)
 
         inv_final_antes_consumo = inv_inicial + entregado
@@ -175,25 +177,39 @@ def evaluar_fitness(individuo, puertos, consumidores, estado_inventarios_inicial
     costo_inv = sum(inv * params['COSTO_INVENTARIO'] for inv in inventario_final.values())
     costo_total = (costo_viaje_total * COSTO_VIAJE) + (dns_total * PENALIZACION_DNS) + costo_inv
     
-    individuo['fitness'] = ingreso_total - costo_total
-    return individuo['fitness']
+    individuo['costo_total'] = costo_total
+    return individuo
 
 def seleccion_por_ruleta(poblacion):
-    poblacion_valida = [ind for ind in poblacion if ind.get('fitness', -float('inf')) > -float('inf')]
-    if not poblacion_valida: return [copy.deepcopy(random.choice(poblacion)) for _ in range(len(poblacion))]
-    min_fitness = min(ind['fitness'] for ind in poblacion_valida)
-    desplazamiento = abs(min_fitness) + 1 if min_fitness <= 0 else 0
-    total_fitness_ajustado = sum(ind['fitness'] + desplazamiento for ind in poblacion_valida)
-    if total_fitness_ajustado == 0: return [copy.deepcopy(random.choice(poblacion_valida)) for _ in range(len(poblacion))]
+
+    poblacion_valida = [ind for ind in poblacion if ind.get('costo_total', float('inf')) < float('inf')]
+    if not poblacion_valida:
+        return [copy.deepcopy(random.choice(poblacion)) for _ in range(len(poblacion))]
+
+    costos = [ind['costo_total'] for ind in poblacion_valida]
+
+    # evitar división por cero (si algún costo es 0)
+    min_costo = min(costos)
+    desplazamiento = 1e-6 if min_costo == 0 else 0
+
+    #menor costo = mayor peso
+    pesos = [1.0 / (c + desplazamiento) for c in costos]
+    total_pesos = sum(pesos)
+
+    if total_pesos == 0:
+        return [copy.deepcopy(random.choice(poblacion_valida)) for _ in range(len(poblacion))]
+
+    # ruleta:
     seleccionados = []
     for _ in range(len(poblacion)):
-        pick = random.uniform(0, total_fitness_ajustado)
+        pick = random.uniform(0, total_pesos)
         current = 0
-        for individuo in poblacion_valida:
-            current += individuo['fitness'] + desplazamiento
-            if current > pick:
+        for individuo, peso in zip(poblacion_valida, pesos):
+            current += peso
+            if current >= pick:
                 seleccionados.append(copy.deepcopy(individuo))
                 break
+
     return seleccionados
 
 def cruzamiento(padre1, padre2, n_barcos):
@@ -205,9 +221,9 @@ def cruzamiento(padre1, padre2, n_barcos):
 
 def mutacion(individuo):
     if random.random() < PROBABILIDAD_MUTACION:
-        rutas_elegibles = [r for r in individuo['rutas'] if len(r['ruta']) > 1]
+        rutas_elegibles = [r for r in individuo['rutas'] if len(r['ruta']) > 1] # cada r es la ruta que hace un buque
         if not rutas_elegibles: return individuo
-        ruta_a_mutar = random.choice(rutas_elegibles)
+        ruta_a_mutar = random.choice(rutas_elegibles) 
         paradas_intercambiables = list(range(len(ruta_a_mutar['ruta'])))
         if len(paradas_intercambiables) < 2: return individuo
         idx1, idx2 = random.sample(paradas_intercambiables, 2)
@@ -229,29 +245,53 @@ def generar_vecino_swap(solucion):
     return vecino, movimiento
 
 def busqueda_tabu(individuo_inicial, puertos, consumidores, estado_inventarios, params):
+    # Partimos desde una copia del individuo inicial
     mejor_solucion = copy.deepcopy(individuo_inicial)
-    mejor_fitness_global = evaluar_fitness(mejor_solucion, puertos, consumidores, estado_inventarios, params)
-    if mejor_fitness_global == -float('inf'): return individuo_inicial
+
+    mejor_solucion = evaluar_costos(mejor_solucion, puertos, consumidores, estado_inventarios, params)
+    mejor_costo_global = mejor_solucion["costo_total"]
+
+    # Si es inválida, no usamos Tabu
+    if mejor_costo_global == float('inf'):
+        return individuo_inicial
+
+    # La solución actual parte siendo la mejor conocida hasta ahora
     solucion_actual = copy.deepcopy(mejor_solucion)
     lista_tabu = []
+
     for _ in range(TS_ITERACIONES):
-        mejor_vecino, mejor_fitness_vecino, mejor_movimiento = None, -float('inf'), None
+        mejor_vecino, mejor_costo_vecino, mejor_movimiento = None, float('inf'), None
+
         for _ in range(20):
             vecino, movimiento = generar_vecino_swap(solucion_actual)
-            if not vecino or not movimiento: continue
-            fitness_vecino = evaluar_fitness(vecino, puertos, consumidores, estado_inventarios, params)
-            if fitness_vecino == -float('inf'): continue
-            es_mejor_global = fitness_vecino > mejor_fitness_global
+            if not vecino or not movimiento:
+                continue
+
+            vecino_evaluado = evaluar_costos(vecino, puertos, consumidores, estado_inventarios, params)
+            costo_vecino = vecino_evaluado["costo_total"]
+            if costo_vecino == float('inf'):
+                continue
+
+            es_mejor_global = costo_vecino < mejor_costo_global
+
             if (movimiento not in lista_tabu) or es_mejor_global:
-                if fitness_vecino > mejor_fitness_vecino:
-                    mejor_fitness_vecino, mejor_vecino, mejor_movimiento = fitness_vecino, vecino, movimiento
+                if costo_vecino < mejor_costo_vecino:
+                    mejor_costo_vecino = costo_vecino
+                    mejor_vecino = vecino_evaluado   # <-- OJO: ahora guardo el evaluado
+                    mejor_movimiento = movimiento
+
         if mejor_vecino:
             solucion_actual = mejor_vecino
             lista_tabu.append(mejor_movimiento)
-            if len(lista_tabu) > TS_TAMANO_LISTA: lista_tabu.pop(0)
-            if mejor_fitness_vecino > mejor_fitness_global:
-                mejor_solucion, mejor_fitness_global = mejor_vecino, mejor_fitness_vecino
+            if len(lista_tabu) > TS_TAMANO_LISTA:
+                lista_tabu.pop(0)
+
+            if mejor_costo_vecino < mejor_costo_global:
+                mejor_solucion = mejor_vecino
+                mejor_costo_global = mejor_costo_vecino
+
     return mejor_solucion
+
 
 if __name__ == "__main__":
     
@@ -270,11 +310,12 @@ if __name__ == "__main__":
         #creamos los individuos económicos ()
         poblacion = [crear_individuo_economico(producer_df, consumer_df, params['N_BARCOS'], params['CAPACIDAD_BARCO'], puertos_df, estado_inventarios_inicial) for _ in range(TAMANO_POBLACION)]
         
-        # acá se evalúa el fitness
-        for ind in poblacion:
-            evaluar_fitness(ind, puertos_df, consumers_list, estado_inventarios_inicial, params)
+        # acá se evalúa el costo total de cada solución (individuo)
+        for i, ind in enumerate(poblacion):
+            ind_actualizado = evaluar_costos(ind, puertos_df, consumers_list, estado_inventarios_inicial, params)
+            poblacion[i] = ind_actualizado
 
-        mejor_fitness_global = -float('inf')
+        mejor_costo_global = float('inf')
 
         for gen in range(N_GENERACIONES):
             padres = seleccion_por_ruleta(poblacion)
@@ -287,31 +328,34 @@ if __name__ == "__main__":
             else:
                 nueva_poblacion = [copy.deepcopy(p) for p in padres]
             
-            for ind in nueva_poblacion:
-                evaluar_fitness(ind, puertos_df, consumers_list, estado_inventarios_inicial, params)
+            #después de algoritmo genético (cruzamiento y mutación), se vuelve a evaluar soluciones
+            for j, ind in enumerate(nueva_poblacion):
+                ind_actualizado = evaluar_costos(ind, puertos_df, consumers_list, estado_inventarios_inicial, params)
+                nueva_poblacion[j] = ind_actualizado
                 
-            mejor_de_generacion = max(poblacion, key=lambda x: x.get('fitness', -float('inf')))
+            #obtenemos mejor resultado de AG.
+            mejor_de_generacion = min(nueva_poblacion, key=lambda x: x.get('costo_total', float('inf')))
             
             mejor_refinado = busqueda_tabu(mejor_de_generacion, puertos_df, consumers_list, estado_inventarios_inicial, params)
             
             if nueva_poblacion:
-                peor_nuevo_idx = min(range(len(nueva_poblacion)), key=lambda i: nueva_poblacion[i].get('fitness', -float('inf')))
-                if mejor_refinado.get('fitness', -float('inf')) > nueva_poblacion[peor_nuevo_idx].get('fitness', -float('inf')):
+                peor_nuevo_idx = max(range(len(nueva_poblacion)), key=lambda i: nueva_poblacion[i].get('costo_total', float('inf')))
+                if mejor_refinado.get('costo_total', float('inf')) < nueva_poblacion[peor_nuevo_idx].get('costo_total', float('inf')):
                     nueva_poblacion[peor_nuevo_idx] = mejor_refinado
             
             poblacion = nueva_poblacion if nueva_poblacion else poblacion
             
-            mejor_fitness_actual = max(ind.get('fitness', -float('inf')) for ind in poblacion)
-            if mejor_fitness_actual > mejor_fitness_global:
-                mejor_fitness_global = mejor_fitness_actual
+            mejor_costo_actual = min(ind.get('costo_total', float('inf')) for ind in poblacion)
+            if mejor_costo_actual < mejor_costo_global:
+                mejor_costo_global = mejor_costo_actual
 
-            fitness_promedio = np.mean([ind['fitness'] for ind in poblacion if ind.get('fitness', -float('inf')) > -float('inf')])
+            costo_promedio = np.mean([ind['costo_total'] for ind in poblacion if ind.get('costo_total', float('inf')) < float('inf')])
             
-            print(f"Generación {gen+1:2d}: Mejor Fitness = {mejor_fitness_actual:10.2f} (Mejor Global: {mejor_fitness_global:10.2f})")
+            print(f"Generación {gen+1:2d}: Mejor Costo = {mejor_costo_actual:10.2f} (Mejor Global: {mejor_costo_global:10.2f})")
 
         print("\n--- EVOLUCIÓN COMPLETADA ---")
-        mejor_individuo_final = max(poblacion, key=lambda x: x.get('fitness', -float('inf')))
-        print(f"Mejor fitness global encontrado: {mejor_individuo_final['fitness']:.2f}")
+        mejor_individuo_final = min(poblacion, key=lambda x: x.get('costo_total', float('inf')))
+        print(f"Mejor costo global encontrado: {mejor_individuo_final['costo_total']:.2f}")
 
         print("\n" + "="*50)
         print("--- ANÁLISIS DEL MEJOR PLAN SEMANAL ENCONTRADO ---")
@@ -333,7 +377,7 @@ if __name__ == "__main__":
                     total_entregado += parada['cantidad']
                     consumidores_atendidos.add(parada['puerto_id'])
         
-        print(f"  - Fitness (Utilidad): {mejor_individuo_final['fitness']:.2f}")
+        print(f"  - Costo Total: {mejor_individuo_final['costo_total']:.2f}")
         print(f"  - Unidades Totales Entregadas: {int(total_entregado)}")
         print(f"  - Consumidores Únicos Atendidos: {len(consumidores_atendidos)} de {len(consumer_df)}")
         print(f"  - Distancia Total Recorrida: {distancia_total:.2f}")
