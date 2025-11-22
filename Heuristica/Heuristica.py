@@ -122,6 +122,9 @@ def crear_individuo_economico(productores_df, consumidores_df, n_barcos, capacid
                 carga_actual -= demanda_a_entregar
                 ubicacion_actual = consumidor_cercano['id']
                 consumidores_pendientes.remove(consumidor_cercano)
+            else:
+                consumidores_pendientes.remove(consumidor_cercano)
+
         
         rutas.append(ruta_buque)
         
@@ -247,7 +250,7 @@ def busqueda_tabu(individuo_inicial, puertos, consumidores, estado_barcos, estad
     # Partimos desde una copia del individuo inicial
     mejor_solucion = copy.deepcopy(individuo_inicial)
 
-    mejor_solucion = evaluar_costos(mejor_solucion, puertos, consumidores, estado_inventarios, params)
+    mejor_solucion = evaluar_costos(mejor_solucion, puertos, consumidores,  estado_inventarios, params)
     mejor_costo_global = mejor_solucion["costo_total"]
 
     # Si es inválida, no usamos Tabu
@@ -266,7 +269,7 @@ def busqueda_tabu(individuo_inicial, puertos, consumidores, estado_barcos, estad
             if not vecino or not movimiento:
                 continue
 
-            vecino_evaluado = evaluar_costos(vecino, puertos, consumidores, estado_inventarios, params)
+            vecino_evaluado = evaluar_costos(vecino, puertos, consumidores,  estado_inventarios, params)
             costo_vecino = vecino_evaluado["costo_total"]
             if costo_vecino == float('inf'):
                 continue
@@ -311,7 +314,7 @@ def ejecutar_optimizacion_semanal(producer_df, consumer_df, puertos_df, params, 
         
         # acá se evalúa el costo total de cada solución (individuo)
         for i, ind in enumerate(poblacion):
-            ind_actualizado = evaluar_costos(ind, puertos_df, consumers_list, estado_inventarios_inicial, params)
+            ind_actualizado = evaluar_costos(ind, puertos_df, consumers_list,  estado_inventarios_inicial, params)
             poblacion[i] = ind_actualizado
 
         mejor_costo_global = float('inf')
@@ -329,13 +332,13 @@ def ejecutar_optimizacion_semanal(producer_df, consumer_df, puertos_df, params, 
             
             #después de algoritmo genético (cruzamiento y mutación), se vuelve a evaluar soluciones
             for j, ind in enumerate(nueva_poblacion):
-                ind_actualizado = evaluar_costos(ind, puertos_df, consumers_list, estado_barcos_inicial_dummy, estado_inventarios_inicial, params)
+                ind_actualizado = evaluar_costos(ind, puertos_df, consumers_list,  estado_inventarios_inicial, params)
                 nueva_poblacion[j] = ind_actualizado
                 
             #obtenemos mejor resultado de AG.
             mejor_de_generacion = min(nueva_poblacion, key=lambda x: x.get('costo_total', float('inf')))
             
-            mejor_refinado = busqueda_tabu(mejor_de_generacion, puertos_df, consumers_list, estado_inventarios_inicial, params)
+            mejor_refinado = busqueda_tabu(mejor_de_generacion, puertos_df, consumers_list, estado_barcos, estado_inventarios_inicial, params)
             
             if nueva_poblacion:
                 peor_nuevo_idx = max(range(len(nueva_poblacion)), key=lambda i: nueva_poblacion[i].get('costo_total', float('inf')))
