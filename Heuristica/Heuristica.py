@@ -140,10 +140,10 @@ def evaluar_costos(individuo, puertos, consumidores, estado_inventarios_inicial,
             if parada['tipo'] == 'carga':
                 carga_actual += parada['cantidad']
                 if carga_actual > params['CAPACIDAD_BARCO']:
-                    individuo['costo_viaje_total'] = float('inf'); return individuo
+                    individuo['costo_total'] = float('inf'); return individuo
             elif parada['tipo'] == 'descarga':
                 if carga_actual < parada['cantidad']:
-                    individuo['costo_viaje_total'] = float('inf'); return individuo
+                    individuo['costo_total'] = float('inf'); return individuo
                 carga_actual -= parada['cantidad']
         
         #seguimos si ruta es factible
@@ -243,7 +243,7 @@ def generar_vecino_swap(solucion):
     paradas[idx1], paradas[idx2] = paradas[idx2], paradas[idx1]
     return vecino, movimiento
 
-def busqueda_tabu(individuo_inicial, puertos, consumidores, estado_inventarios, params):
+def busqueda_tabu(individuo_inicial, puertos, consumidores, estado_barcos, estado_inventarios, params):
     # Partimos desde una copia del individuo inicial
     mejor_solucion = copy.deepcopy(individuo_inicial)
 
@@ -291,12 +291,10 @@ def busqueda_tabu(individuo_inicial, puertos, consumidores, estado_inventarios, 
 
     return mejor_solucion
 
-
-if __name__ == "__main__":
+#Main
+def ejecutar_optimizacion_semanal(producer_df, consumer_df, puertos_df, params, estado_barcos, estado_inventarios):
 
     print("Hola, soy Juan. Acá empieza el código de la Heurística")
-    
-    producer_df, consumer_df, puertos_df, params = cargar_y_procesar_datos()
 
     if producer_df is not None:
         consumers_list = consumer_df.to_dict('records')
@@ -331,7 +329,7 @@ if __name__ == "__main__":
             
             #después de algoritmo genético (cruzamiento y mutación), se vuelve a evaluar soluciones
             for j, ind in enumerate(nueva_poblacion):
-                ind_actualizado = evaluar_costos(ind, puertos_df, consumers_list, estado_inventarios_inicial, params)
+                ind_actualizado = evaluar_costos(ind, puertos_df, consumers_list, estado_barcos_inicial_dummy, estado_inventarios_inicial, params)
                 nueva_poblacion[j] = ind_actualizado
                 
             #obtenemos mejor resultado de AG.
@@ -400,3 +398,4 @@ if __name__ == "__main__":
 
         
         print("="*50)
+        return mejor_individuo_final

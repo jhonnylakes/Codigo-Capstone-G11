@@ -57,7 +57,7 @@ if __name__ == "__main__":
             )
             
             if mejor_plan_semanal:
-                print(f"Plan óptimo encontrado para la Semana {semana} con Fitness: {mejor_plan_semanal['fitness']:.2f}")
+                print(f"Plan óptimo encontrado para la Semana {semana} con Costo Total : {mejor_plan_semanal['costo_total']:.2f}")
                 plan_anual.append(mejor_plan_semanal)
                 
                 estado_barcos, estado_inventarios = actualizar_estado_sistema(
