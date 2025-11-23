@@ -12,20 +12,17 @@ def inicializar_estado_sistema(productores, consumidores, n_barcos):
     
     return estado_barcos, estado_inventarios
 
+
 def actualizar_estado_sistema(estado_barcos, estado_inventarios, plan_semanal, consumidores_df):
-    """Actualiza la ubicación, carga de barcos y el inventario de los puertos."""
-    
     for plan_buque in plan_semanal['rutas']:
         buque_id = plan_buque['buque_id']
         ruta = plan_buque['ruta']
-        if not ruta: continue
-        estado_barcos[buque_id]['ubicacion'] = ruta[-1]['puerto_id']
-        carga_final = plan_semanal['carga_final_barcos']
-        for parada in ruta:
-            if parada['tipo'] == 'carga': carga_final += parada['cantidad']
-            else: carga_final -= parada['cantidad']
-        estado_barcos[buque_id]['carga_a_bordo'] = carga_final['B{buque_id}']
+        if not ruta:
+            continue
 
+        estado_barcos[buque_id]['ubicacion'] = ruta[-1]['puerto_id']
+        # usarmos directamente la carga final calculada por la heurística
+        estado_barcos[buque_id]['carga_a_bordo'] = plan_semanal['carga_final_barcos'][buque_id]
 
     for plan_buque in plan_semanal['rutas']:
         for parada in plan_buque['ruta']:
@@ -37,6 +34,7 @@ def actualizar_estado_sistema(estado_barcos, estado_inventarios, plan_semanal, c
         estado_inventarios[cons_id] = max(0, inv_actual - demanda_semanal)
 
     return estado_barcos, estado_inventarios
+
 
 if __name__ == "__main__":
     

@@ -91,9 +91,9 @@ def crear_individuo_economico(productores_df, consumidores_df, n_barcos, capacid
     #asignamos cada uno de los barcos -> PENDIENTE: LIMITAR A CLUSTER
     for i in range(1, int(n_barcos) + 1):
         ruta_buque = {'buque_id': f'B{i}', 'ruta': []}
-        dict_ubicacion_actual = estado_barcos[f'B{i}']
-        ubicacion_actual = dict_ubicacion_actual['ubicacion']
-        carga_actual = estado_barcos[buque_id].get('carga_a_bordo', 0)
+        dict_estado_barco = estado_barcos[f'B{i}']
+        ubicacion_actual = dict_estado_barco['ubicacion']
+        carga_actual = estado_barcos[f'B{i}'].get('carga_a_bordo', 0)
 
         while len(ruta_buque['ruta']) < MAX_PARADAS and consumidores_pendientes:
             min_demanda_pendiente = min(c['demanda_pendiente'] for c in consumidores_pendientes) 
@@ -132,22 +132,23 @@ def crear_individuo_economico(productores_df, consumidores_df, n_barcos, capacid
                 carga_actual = 0
                 ubicacion_actual = consumidor_cercano['id']
 
-        carga_final_barcos['B{i}'] = carga_actual
+        carga_final_barcos[f'B{i}'] = carga_actual
         rutas.append(ruta_buque)
         
     return {'costo_viaje_total': 0, 'costo_total': 0 , 'rutas': rutas, 'carga_final_barcos': carga_final_barcos, 'dns_total': 0}
 
 
-def evaluar_costos(individuo, puertos, consumidores, estado_inventarios, params):
+def evaluar_costos(individuo, puertos, consumidores, estado_inicial_barcos, estado_inventarios, params):
     costo_viaje_total = 0
     dns_total = 0
     entregas = {c['id']: 0 for c in consumidores}
     
     for i, plan in enumerate(individuo['rutas']):
         ruta = plan['ruta'] #esta es la ruta del buque i
+        buque_id = f'B{i+1}'
         
         # chequeamos factibilidad de la ruta
-        carga_actual = 0 
+        carga_actual = estado_inicial_barcos[buque_id].get('carga_a_bordo', 0)
         for parada in ruta:
             if parada['tipo'] == 'carga':
                 carga_actual += parada['cantidad']
@@ -259,7 +260,7 @@ def busqueda_tabu(individuo_inicial, puertos, consumidores, estado_barcos, estad
     # Partimos desde una copia del individuo inicial
     mejor_solucion = copy.deepcopy(individuo_inicial)
 
-    mejor_solucion = evaluar_costos(mejor_solucion, puertos, consumidores,  estado_inventarios, params)
+    mejor_solucion = evaluar_costos(mejor_solucion, puertos, consumidores,  estado_barcos, estado_inventarios, params)
     mejor_costo_global = mejor_solucion["costo_total"]
 
     # Si es inválida, no usamos Tabu
@@ -278,7 +279,7 @@ def busqueda_tabu(individuo_inicial, puertos, consumidores, estado_barcos, estad
             if not vecino or not movimiento:
                 continue
 
-            vecino_evaluado = evaluar_costos(vecino, puertos, consumidores,  estado_inventarios, params)
+            vecino_evaluado = evaluar_costos(vecino, puertos, consumidores, estado_barcos, estado_inventarios, params)
             costo_vecino = vecino_evaluado["costo_total"]
             if costo_vecino == float('inf'):
                 continue
@@ -321,7 +322,7 @@ def ejecutar_optimizacion_semanal(producer_df, consumer_df, puertos_df, params, 
         
         # acá se evalúa el costo total de cada solución (individuo)
         for i, ind in enumerate(poblacion):
-            ind_actualizado = evaluar_costos(ind, puertos_df, consumers_list,  estado_inventarios, params)
+            ind_actualizado = evaluar_costos(ind, puertos_df, consumers_list, estado_barcos, estado_inventarios, params)
             poblacion[i] = ind_actualizado
 
         mejor_costo_global = float('inf')
@@ -339,7 +340,7 @@ def ejecutar_optimizacion_semanal(producer_df, consumer_df, puertos_df, params, 
             
             #después de algoritmo genético (cruzamiento y mutación), se vuelve a evaluar soluciones
             for j, ind in enumerate(nueva_poblacion):
-                ind_actualizado = evaluar_costos(ind, puertos_df, consumers_list,  estado_inventarios, params)
+                ind_actualizado = evaluar_costos(ind, puertos_df, consumers_list, estado_barcos, estado_inventarios, params)
                 nueva_poblacion[j] = ind_actualizado
                 
             #obtenemos mejor resultado de AG.
