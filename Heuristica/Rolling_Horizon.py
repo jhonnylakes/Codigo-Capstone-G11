@@ -20,11 +20,11 @@ def actualizar_estado_sistema(estado_barcos, estado_inventarios, plan_semanal, c
         ruta = plan_buque['ruta']
         if not ruta: continue
         estado_barcos[buque_id]['ubicacion'] = ruta[-1]['puerto_id']
-        carga_final = estado_barcos[buque_id].get('carga_a_bordo', 0)
+        carga_final = plan_semanal['carga_final_barcos']
         for parada in ruta:
             if parada['tipo'] == 'carga': carga_final += parada['cantidad']
             else: carga_final -= parada['cantidad']
-        estado_barcos[buque_id]['carga_a_bordo'] = carga_final
+        estado_barcos[buque_id]['carga_a_bordo'] = carga_final['B{buque_id}']
 
 
     for plan_buque in plan_semanal['rutas']:
@@ -79,4 +79,13 @@ if __name__ == "__main__":
         
         print("\n" + "="*50)
         print("--- SIMULACIÓN COMPLETADA ---")
+        print("RESULTADOS FINALES:")
+        costo_total_anual = 0
+        dns_total_anual = 0
+        for plan in plan_anual: 
+            costo_total_anual += plan['costo_total']
+            dns_total_anual += plan['dns_total']
+        print("\n Costo Total 52 semanas = ", costo_total_anual)
+        print("\n DNS Total 52 semanas = ", dns_total_anual)
+
         

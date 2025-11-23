@@ -71,12 +71,13 @@ def encontrar_puerto_mas_cercano(puerto_actual_id, lista_puertos, puertos_df):
     return mejor_puerto, menor_distancia
 
 "individuo = solución de rutas para todos los barcos"
-def crear_individuo_economico(productores_df, consumidores_df, n_barcos, capacidad, puertos_df, estado_inventarios):
+def crear_individuo_economico(productores_df, consumidores_df, n_barcos, capacidad, puertos_df, estado_barcos, estado_inventarios):
     """
     Crea un individuo que solo atiende la demanda pendiente y considera costos.
     """
     rutas = []
     costo_viaje_total = 0
+    carga_final_barcos = {f'B{i + 1}':0 for i in range(int(n_barcos))}
 
     # agregamos a lista los consumidores que aún tienen demanda sin satisfacer.
     consumidores_pendientes = []
@@ -87,12 +88,12 @@ def crear_individuo_economico(productores_df, consumidores_df, n_barcos, capacid
             cons_copy['demanda_pendiente'] = demanda_pendiente
             consumidores_pendientes.append(cons_copy)
 
-    #asignamos al azar un productor a cada uno de los barcos -> PENDIENTE: LIMITAR A CLUSTER
+    #asignamos cada uno de los barcos -> PENDIENTE: LIMITAR A CLUSTER
     for i in range(1, int(n_barcos) + 1):
         ruta_buque = {'buque_id': f'B{i}', 'ruta': []}
-        productor_inicial = productores_df.sample(1).iloc[0]
-        ubicacion_actual = productor_inicial['id']
-        carga_actual = 0
+        dict_ubicacion_actual = estado_barcos[f'B{i}']
+        ubicacion_actual = dict_ubicacion_actual['ubicacion']
+        carga_actual = estado_barcos[buque_id].get('carga_a_bordo', 0)
 
         while len(ruta_buque['ruta']) < MAX_PARADAS and consumidores_pendientes:
             min_demanda_pendiente = min(c['demanda_pendiente'] for c in consumidores_pendientes) 
@@ -116,22 +117,30 @@ def crear_individuo_economico(productores_df, consumidores_df, n_barcos, capacid
             if carga_actual >= demanda_a_entregar:
                 costo_del_tramo = dist_a_consumidor * COSTO_VIAJE
                 costo_viaje_total += costo_del_tramo
-                #ingreso_del_tramo = demanda_a_entregar * INGRESO_ENTREGA
 
                 ruta_buque['ruta'].append({'puerto_id': consumidor_cercano['id'], 'tipo': 'descarga', 'cantidad': demanda_a_entregar})
                 carga_actual -= demanda_a_entregar
                 ubicacion_actual = consumidor_cercano['id']
                 consumidores_pendientes.remove(consumidor_cercano)
             else:
-                consumidores_pendientes.remove(consumidor_cercano)
+                costo_del_tramo = dist_a_consumidor * COSTO_VIAJE
+                costo_viaje_total += costo_del_tramo
 
-        
+                ruta_buque['ruta'].append({'puerto_id': consumidor_cercano['id'], 'tipo': 'descarga', 'cantidad': carga_actual})
+                
+                consumidor_cercano['demanda_pendiente'] -= carga_actual
+                carga_actual = 0
+                ubicacion_actual = consumidor_cercano['id']
+
+        carga_final_barcos['B{i}'] = carga_actual
         rutas.append(ruta_buque)
         
-    return {'costo_viaje_total': 0, 'costo_total': 0 , 'rutas': rutas}
+    return {'costo_viaje_total': 0, 'costo_total': 0 , 'rutas': rutas, 'carga_final_barcos': carga_final_barcos, 'dns_total': 0}
 
-def evaluar_costos(individuo, puertos, consumidores, estado_inventarios_inicial, params):
+
+def evaluar_costos(individuo, puertos, consumidores, estado_inventarios, params):
     costo_viaje_total = 0
+    dns_total = 0
     entregas = {c['id']: 0 for c in consumidores}
     
     for i, plan in enumerate(individuo['rutas']):
@@ -160,13 +169,12 @@ def evaluar_costos(individuo, puertos, consumidores, estado_inventarios_inicial,
             if parada['tipo'] == 'descarga':
                 entregas[parada['puerto_id']] += parada['cantidad']
 
-    dns_total = 0
-    inventario_final = copy.deepcopy(estado_inventarios_inicial)
+    inventario_final = copy.deepcopy(estado_inventarios)
 
     for cons in consumidores:
         cons_id = cons['id']
         demanda_semanal = cons['demanda']
-        inv_inicial = estado_inventarios_inicial.get(cons_id, 0)
+        inv_inicial = estado_inventarios.get(cons_id, 0)
         entregado = entregas.get(cons_id, 0)
 
         demanda_pendiente = max(0, demanda_semanal - inv_inicial)
@@ -180,6 +188,7 @@ def evaluar_costos(individuo, puertos, consumidores, estado_inventarios_inicial,
     costo_total = (costo_viaje_total * COSTO_VIAJE) + (dns_total * PENALIZACION_DNS) + costo_inv
     
     individuo['costo_total'] = costo_total
+    individuo['dns_total'] = dns_total
     return individuo
 
 def seleccion_por_ruleta(poblacion):
@@ -301,20 +310,18 @@ def ejecutar_optimizacion_semanal(producer_df, consumer_df, puertos_df, params, 
 
     if producer_df is not None:
         consumers_list = consumer_df.to_dict('records')
-        
-        estado_barcos_inicial_dummy = {f'B{i+1}': {'ubicacion': None, 'carga_a_bordo': 0} for i in range(int(params['N_BARCOS']))}
-        estado_inventarios_inicial = {row['id']: 0 for _, row in consumer_df.iterrows()}
 
         print("\n--- INICIANDO ALGORITMO HÍBRIDO (MODO STANDALONE) ---")
         print(f"Parámetros: {params['N_BARCOS']} barcos de {params['CAPACIDAD_BARCO']} de capacidad.")
         print(f"Población: {TAMANO_POBLACION}, Generaciones: {N_GENERACIONES}\n")
+        print("Posición Barcos al inicio de la semana:")
 
         #creamos los individuos económicos ()
-        poblacion = [crear_individuo_economico(producer_df, consumer_df, params['N_BARCOS'], params['CAPACIDAD_BARCO'], puertos_df, estado_inventarios_inicial) for _ in range(TAMANO_POBLACION)]
+        poblacion = [crear_individuo_economico(producer_df, consumer_df, params['N_BARCOS'], params['CAPACIDAD_BARCO'], puertos_df, estado_barcos, estado_inventarios) for _ in range(TAMANO_POBLACION)]
         
         # acá se evalúa el costo total de cada solución (individuo)
         for i, ind in enumerate(poblacion):
-            ind_actualizado = evaluar_costos(ind, puertos_df, consumers_list,  estado_inventarios_inicial, params)
+            ind_actualizado = evaluar_costos(ind, puertos_df, consumers_list,  estado_inventarios, params)
             poblacion[i] = ind_actualizado
 
         mejor_costo_global = float('inf')
@@ -332,13 +339,13 @@ def ejecutar_optimizacion_semanal(producer_df, consumer_df, puertos_df, params, 
             
             #después de algoritmo genético (cruzamiento y mutación), se vuelve a evaluar soluciones
             for j, ind in enumerate(nueva_poblacion):
-                ind_actualizado = evaluar_costos(ind, puertos_df, consumers_list,  estado_inventarios_inicial, params)
+                ind_actualizado = evaluar_costos(ind, puertos_df, consumers_list,  estado_inventarios, params)
                 nueva_poblacion[j] = ind_actualizado
                 
             #obtenemos mejor resultado de AG.
             mejor_de_generacion = min(nueva_poblacion, key=lambda x: x.get('costo_total', float('inf')))
             
-            mejor_refinado = busqueda_tabu(mejor_de_generacion, puertos_df, consumers_list, estado_barcos, estado_inventarios_inicial, params)
+            mejor_refinado = busqueda_tabu(mejor_de_generacion, puertos_df, consumers_list, estado_barcos, estado_inventarios, params)
             
             if nueva_poblacion:
                 peor_nuevo_idx = max(range(len(nueva_poblacion)), key=lambda i: nueva_poblacion[i].get('costo_total', float('inf')))
