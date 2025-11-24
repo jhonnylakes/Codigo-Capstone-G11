@@ -85,5 +85,3 @@ if __name__ == "__main__":
             dns_total_anual += plan['dns_total']
         print("\n Costo Total 52 semanas = ", costo_total_anual)
         print("\n DNS Total 52 semanas = ", dns_total_anual)
-
-        
