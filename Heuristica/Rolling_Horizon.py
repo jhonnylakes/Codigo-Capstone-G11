@@ -1,6 +1,20 @@
-
 import pandas as pd
 import Heuristica as opt  
+import sys
+
+#clase para printear en terminal y output.txt
+class Tee:
+    def __init__(self, file):
+        self.file = file
+        self.stdout = sys.stdout
+
+    def write(self, message):
+        self.stdout.write(message)  
+        self.file.write(message)    
+
+    def flush(self):
+        self.stdout.flush()
+        self.file.flush()
 
 def inicializar_estado_sistema(productores, consumidores, n_barcos):
     """Define el estado del sistema para la Semana 1."""
@@ -37,51 +51,56 @@ def actualizar_estado_sistema(estado_barcos, estado_inventarios, plan_semanal, c
 
 
 if __name__ == "__main__":
+
+    original_stdout = sys.stdout
     
-    producer_df, consumer_df, puertos_df, params = opt.cargar_y_procesar_datos()
+    with open('output.txt', 'w') as f:
+        sys.stdout = Tee(f)
+        producer_df, consumer_df, puertos_df, params = opt.cargar_y_procesar_datos()
 
-    if producer_df is not None:
-        
-        estado_barcos, estado_inventarios = inicializar_estado_sistema(producer_df, consumer_df, params['N_BARCOS'])
-        
-        plan_anual = []
-        
-        for semana in range(1, 53): 
-            print("\n" + "="*50)
-            print(f"--- Planificando Semana {semana} ---")
+        if producer_df is not None:
             
-            mejor_plan_semanal = opt.ejecutar_optimizacion_semanal(
-                producer_df, consumer_df, puertos_df, params, estado_barcos, estado_inventarios
-            )
+            estado_barcos, estado_inventarios = inicializar_estado_sistema(producer_df, consumer_df, params['N_BARCOS'])
             
-            if mejor_plan_semanal:
-                print(f"Plan óptimo encontrado para la Semana {semana} con Costo Total : {mejor_plan_semanal['costo_total']:.2f}")
-                plan_anual.append(mejor_plan_semanal)
+            plan_anual = []
+            
+            for semana in range(1, 53): 
+                print("\n" + "="*50)
+                print(f"--- Planificando Semana {semana} ---")
                 
-                estado_barcos, estado_inventarios = actualizar_estado_sistema(
-                    estado_barcos, estado_inventarios, mejor_plan_semanal, consumer_df
+                mejor_plan_semanal = opt.ejecutar_optimizacion_semanal(
+                    producer_df, consumer_df, puertos_df, params, estado_barcos, estado_inventarios
                 )
-                print(f"Estado actualizado de barcos e inventarios para la siguiente semana.")
-                print("\nInventario final de consumidores (primeros 10):")
-                for cons_id, inv in list(estado_inventarios.items())[:10]:
-                    print(f"  - Consumidor {cons_id}: {inv} unidades")
-
-                print("\nEstado final de barcos (primeros 3):")
-                for i in range(1, 4):
-                    buque_id = f'B{i}'
-                    print(f"  - {buque_id}: Ubicación='{estado_barcos[buque_id]['ubicacion']}', Carga={estado_barcos[buque_id]['carga_a_bordo']:.0f}")
                 
-            else:
-                print(f"No se encontró una solución válida para la Semana {semana}. Deteniendo simulación.")
-                break
-        
-        print("\n" + "="*50)
-        print("--- SIMULACIÓN COMPLETADA ---")
-        print("RESULTADOS FINALES:")
-        costo_total_anual = 0
-        dns_total_anual = 0
-        for plan in plan_anual: 
-            costo_total_anual += plan['costo_total']
-            dns_total_anual += plan['dns_total']
-        print("\n Costo Total 52 semanas = ", costo_total_anual)
-        print("\n DNS Total 52 semanas = ", dns_total_anual)
+                if mejor_plan_semanal:
+                    print(f"Plan óptimo encontrado para la Semana {semana} con Costo Total : {mejor_plan_semanal['costo_total']:.2f}")
+                    plan_anual.append(mejor_plan_semanal)
+                    
+                    estado_barcos, estado_inventarios = actualizar_estado_sistema(
+                        estado_barcos, estado_inventarios, mejor_plan_semanal, consumer_df
+                    )
+                    print(f"Estado actualizado de barcos e inventarios para la siguiente semana.")
+                    print("\nInventario final de consumidores (primeros 10):")
+                    for cons_id, inv in list(estado_inventarios.items())[:10]:
+                        print(f"  - Consumidor {cons_id}: {inv} unidades")
+
+                    print("\nEstado final de barcos (primeros 3):")
+                    for i in range(1, 4):
+                        buque_id = f'B{i}'
+                        print(f"  - {buque_id}: Ubicación='{estado_barcos[buque_id]['ubicacion']}', Carga={estado_barcos[buque_id]['carga_a_bordo']:.0f}")
+                    
+                else:
+                    print(f"No se encontró una solución válida para la Semana {semana}. Deteniendo simulación.")
+                    break
+            
+            print("\n" + "="*50)
+            print("--- SIMULACIÓN COMPLETADA ---")
+            print("RESULTADOS FINALES:")
+            costo_total_anual = 0
+            dns_total_anual = 0
+            for plan in plan_anual: 
+                costo_total_anual += plan['costo_total']
+                dns_total_anual += plan['dns_total']
+            print("\n Costo Total 52 semanas = ", costo_total_anual)
+            print("\n DNS Total 52 semanas = ", dns_total_anual)
+    sys.stdout = original_stdout
