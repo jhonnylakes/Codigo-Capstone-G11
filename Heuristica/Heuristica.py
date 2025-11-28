@@ -188,6 +188,7 @@ def evaluar_costos(individuo, puertos, consumidores, estado_inicial_barcos, esta
     costo_inv = sum(inv * params['COSTO_INVENTARIO'] for inv in inventario_final.values())
     costo_total = (costo_viaje_total * COSTO_VIAJE) + (dns_total * PENALIZACION_DNS) + costo_inv
     
+    individuo['costo_viaje_total'] = costo_viaje_total
     individuo['costo_total'] = costo_total
     individuo['dns_total'] = dns_total
     return individuo

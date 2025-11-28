@@ -97,9 +97,11 @@ if __name__ == "__main__":
             print("--- SIMULACIÓN COMPLETADA ---")
             print("RESULTADOS FINALES:")
             costo_total_anual = 0
+            costo_viaje_total = 0
             dns_total_anual = 0
             for plan in plan_anual: 
                 costo_total_anual += plan['costo_total']
+                costo_viaje_total += plan['costo_viaje_total']
                 dns_total_anual += plan['dns_total']
             print("\n Costo Total 52 semanas = ", costo_total_anual)
             print("\n DNS Total 52 semanas = ", dns_total_anual)
