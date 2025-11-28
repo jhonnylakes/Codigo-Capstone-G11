@@ -308,8 +308,6 @@ def busqueda_tabu(individuo_inicial, puertos, consumidores, estado_barcos, estad
 #Main
 def ejecutar_optimizacion_semanal(producer_df, consumer_df, puertos_df, params, estado_barcos, estado_inventarios):
 
-    print("Hola, soy Juan. Acá empieza el código de la Heurística")
-
     if producer_df is not None:
         consumers_list = consumer_df.to_dict('records')
 
@@ -327,6 +325,7 @@ def ejecutar_optimizacion_semanal(producer_df, consumer_df, puertos_df, params, 
             poblacion[i] = ind_actualizado
 
         mejor_costo_global = float('inf')
+        mejor_individuo_global = None
 
         for gen in range(N_GENERACIONES):
             padres = seleccion_por_ruleta(poblacion)
@@ -355,17 +354,28 @@ def ejecutar_optimizacion_semanal(producer_df, consumer_df, puertos_df, params, 
                     nueva_poblacion[peor_nuevo_idx] = mejor_refinado
             
             poblacion = nueva_poblacion if nueva_poblacion else poblacion
-            
-            mejor_costo_actual = min(ind.get('costo_total', float('inf')) for ind in poblacion)
+
+            mejor_individuo_generacion = min(
+                poblacion,
+                key=lambda x: x.get('costo_total', float('inf'))
+            )
+            mejor_costo_actual = mejor_individuo_generacion.get('costo_total', float('inf'))
+
             if mejor_costo_actual < mejor_costo_global:
                 mejor_costo_global = mejor_costo_actual
+                mejor_individuo_global = copy.deepcopy(mejor_individuo_generacion)
 
             costo_promedio = np.mean([ind['costo_total'] for ind in poblacion if ind.get('costo_total', float('inf')) < float('inf')])
             
             print(f"Generación {gen+1:2d}: Mejor Costo = {mejor_costo_actual:10.2f} (Mejor Global: {mejor_costo_global:10.2f})")
 
         print("\n--- EVOLUCIÓN COMPLETADA ---")
-        mejor_individuo_final = min(poblacion, key=lambda x: x.get('costo_total', float('inf')))
+
+        if mejor_individuo_global is None:
+            mejor_individuo_final = min(poblacion, key=lambda x: x.get('costo_total', float('inf')))
+        else:
+            mejor_individuo_final = mejor_individuo_global
+
         print(f"Mejor costo global encontrado: {mejor_individuo_final['costo_total']:.2f}")
 
         print("\n" + "="*50)
@@ -373,7 +383,7 @@ def ejecutar_optimizacion_semanal(producer_df, consumer_df, puertos_df, params, 
         print("="*50)
 
         total_entregado = 0
-        consumidores_atendidos = set()
+        consumidores_atendidos = set() 
         distancia_total = 0
 
         for plan_buque in mejor_individuo_final['rutas']:
